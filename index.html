@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>全10ステージ！ブロック崩し</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            touch-action: none;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin: 10px 0;
+        }
+        canvas {
+            background: #1e1e1e;
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 100%;
+            touch-action: none;
+        }
+        .controls {
+            margin-top: 15px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: all 0.2s ease;
+        }
+        button:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>全10ステージ！ブロック崩し</h1>
+    <canvas id="myCanvas" width="360" height="480"></canvas>
+    
+    <div class="controls">
+        <button id="startBtn">ゲームスタート / リセット</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("myCanvas");
+        const ctx = canvas.getContext("2d");
+        const startBtn = document.getElementById("startBtn");
+
+        // ゲーム状態
+        let stage = 1;
+        const maxStage = 10;
+        let score = 0;
+        let gameState = "STOPPED"; // "PLAYING", "GAMEOVER", "CLEAR", "STOPPED"
+        let animId = null;
+
+        // ボール
+        let x = canvas.width / 2;
+        let y = canvas.height - 30;
+        let speed = 4;
+        let dx = speed;
+        let dy = -speed;
+        const ballRadius = 7;
+
+        // パドル
+        let basePaddleWidth = 80;
+        let paddleWidth = basePaddleWidth;
+        const paddleHeight = 10;
+        let paddleX = (canvas.width - paddleWidth) / 2;
+
+        // ブロック
+        const brickRowCount = 5;
+        const brickColumnCount = 4;
+        const brickWidth = 65;
+        const brickHeight = 18;
+        const brickPadding = 10;
+        const brickOffsetTop = 50;
+        const brickOffsetLeft = 30;
+        let bricks = [];
+
+        function initBricks() {
+            bricks = [];
+            for (let c = 0; c < brickColumnCount; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brickRowCount; r++) {
+                    bricks[c][r] = { x: 0, y: 0, status: 1 };
+                }
+            }
+        }
+
+        // ポインター移動処理 (PC/スマホ共有)
+        function updatePaddlePosition(clientX) {
+            const rect = canvas.getBoundingClientRect();
+            const relativeX = clientX - rect.left;
+            if (relativeX > 0 && relativeX < canvas.width) {
+                paddleX = relativeX - paddleWidth / 2;
+                // 画面端からはみ出さない制限
+                if (paddleX < 0) paddleX = 0;
+                if (paddleX + paddleWidth > canvas.width) paddleX = canvas.width - paddleWidth;
+            }
+        }
+
+        canvas.addEventListener("touchmove", (e) => {
+            updatePaddlePosition(e.touches[0].clientX);
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            updatePaddlePosition(e.clientX);
+        });
+
+        function setupStage(nextStage) {
+            stage = nextStage;
+            speed = 3.5 + (stage - 1) * 0.4;
+            
+            // 初速は斜め45度に近い角度
+            dx = speed * (Math.random() > 0.5 ? 1 : -1) * 0.7;
+            dy = -Math.sqrt(speed * speed - dx * dx);
+
+            paddleWidth = Math.max(35, basePaddleWidth - (stage - 1) * 45 / maxStage);
+
+            x = canvas.width / 2;
+            y = canvas.height - 30;
+            paddleX = (canvas.width - paddleWidth) / 2;
+
+            initBricks();
+        }
+
+        function collisionDetection() {
+            let activeBricks = 0;
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        activeBricks++;
+                        if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+                            dy = -dy;
+                            b.status = 0;
+                            score += 10 * stage;
+                            activeBricks--;
+
+                            if (activeBricks === 0) {
+                                if (stage < maxStage) {
+                                    setupStage(stage + 1);
+                                } else {
+                                    gameState = "CLEAR";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = "#FF5722";
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = "#FF5722";
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
+        }
+
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddleX, canvas.height - paddleHeight - 10, paddleWidth, paddleHeight);
+            ctx.fillStyle = "#2196F3";
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = "#2196F3";
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
+        }
+
+        function drawBricks() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r].status === 1) {
+                        const brickX = (r * (brickWidth + brickPadding)) + brickOffsetLeft;
+                        const brickY = (c * (brickHeight + brickPadding)) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                        ctx.fillStyle = `hsl(${stage * 25 + c * 15}, 75%, 55%)`;
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+
+        function drawInfo() {
+            ctx.font = "14px sans-serif";
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "left";
+            ctx.fillText(`スコア: ${score}`, 15, 25);
+            ctx.textAlign = "right";
+            ctx.fillText(`ステージ: ${stage} / ${maxStage}`, canvas.width - 15, 25);
+        }
+
+        function drawOverlay(title, subtitle) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#FFF";
+            ctx.font = "bold 24px sans-serif";
+            ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
+            
+            ctx.font = "14px sans-serif";
+            ctx.fillStyle = "#AAA";
+            ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 20);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === "PLAYING") {
+                drawBricks();
+                drawBall();
+                drawPaddle();
+                drawInfo();
+                collisionDetection();
+
+                // 壁との衝突（左右）
+                if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+                    dx = -dx;
+                }
+                // 天井との衝突
+                if (y + dy < ballRadius) {
+                    dy = -dy;
+                } 
+                // パドルとの衝突
+                else if (y + dy > canvas.height - ballRadius - paddleHeight - 10) {
+                    if (x > paddleX && x < paddleX + paddleWidth) {
+                        // パドルの接触位置によって反射角を計算
+                        const hitPos = (x - (paddleX + paddleWidth / 2)) / (paddleWidth / 2); // -1.0 〜 1.0
+                        const maxAngle = Math.PI / 3; // 最大60度
+                        const angle = hitPos * maxAngle;
+                        
+                        dx = speed * Math.sin(angle);
+                        dy = -speed * Math.cos(angle);
+                    } else if (y + dy > canvas.height - ballRadius) {
+                        gameState = "GAMEOVER";
+                    }
+                }
+
+                x += dx;
+                y += dy;
+
+                animId = requestAnimationFrame(draw);
+            } else if (gameState === "GAMEOVER") {
+                drawBricks();
+                drawPaddle();
+                drawInfo();
+                drawOverlay("GAME OVER", `到達ステージ: ${stage} | スコア: ${score}`);
+            } else if (gameState === "CLEAR") {
+                drawBricks();
+                drawInfo();
+                drawOverlay("ALL STAGES CLEARED!", `最終スコア: ${score}`);
+            } else if (gameState === "STOPPED") {
+                drawBricks();
+                drawPaddle();
+                drawInfo();
+                drawOverlay("BLOCK BREAKER", "スタートボタンを押してください");
+            }
+        }
+
+        function startGame() {
+            if (animId) cancelAnimationFrame(animId);
+            score = 0;
+            setupStage(1);
+            gameState = "PLAYING";
+            draw();
+        }
+
+        startBtn.addEventListener("click", startGame);
+        
+        // 初期状態の描画
+        setupStage(1);
+        draw();
+    </script>
+</body>
+</html>
